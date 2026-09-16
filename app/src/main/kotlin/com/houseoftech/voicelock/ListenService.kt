@@ -1,7 +1,5 @@
 package com.houseoftech.voicelock
 
-import ai.picovoice.porcupine.Porcupine
-import ai.picovoice.porcupine.PorcupineException
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -18,30 +16,23 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
-import java.io.File
 
 /**
  * The always-on listener. A foreground service of type "microphone" that owns
  * ONE AudioRecord on a dedicated thread and feeds every frame to two consumers
- * that share the stream: Porcupine keyword spotting (when an AccessKey and
- * model are present) and the clap detector (always). No second AudioRecord,
- * no second thread. Detections and periodic battery samples go to SpikeLog.
+ * that share the stream: the [KeywordEngine] (when one is available) and the
+ * clap detector (always). No second AudioRecord, no second thread. Detections
+ * and periodic battery samples go to SpikeLog.
  *
- * Porcupine is OPTIONAL here. Milestone 0 (its accuracy) is blocked on a real
- * device and an AccessKey; the loop and the clap detector must work without it,
- * so Milestones 1-3 can be built and verified in the meantime.
- *
- * Milestone 0 has two sub-steps and this service supports both:
- *  - M0a: a BUILT-IN keyword (PORCUPINE) proves the pipeline end to end with
- *    nothing but an AccessKey.
- *  - M0b: a CUSTOM phrase, trained on console.picovoice.ai and dropped in as
- *    assets/keywords/custom.ppn, is the actual accuracy test. If that file is
- *    present it is used instead of the built-in keyword.
+ * The engine is OPTIONAL and lives behind [KeywordEngine], so which one runs
+ * (Porcupine today, openWakeWord next) is a one-line factory swap in
+ * [startListening] and nothing downstream changes. Milestone 0 (engine accuracy)
+ * is proven on a real device; the loop and the clap detector work without any
+ * engine, so Milestones 1-3 are built and verified in the meantime.
  */
 class ListenService : Service() {
 
-    private var porcupine: Porcupine? = null
+    private var engine: KeywordEngine? = null
     private val clapDetector = ClapDetector(frameLength = FRAME_LENGTH, sampleRate = SAMPLE_RATE)
     @Volatile private var running = false
     private var audioThread: Thread? = null
@@ -100,42 +91,12 @@ class ListenService : Service() {
     private fun startListening() {
         // The recogniser is best-effort: without an AccessKey the service still
         // runs the mic loop and the clap detector, which is all M1-M3 need.
-        porcupine = buildPorcupineOrNull()
+        engine = PorcupineEngine.buildOrNull(this)
         SpikeLog.serviceStartedAt = SystemClock.elapsedRealtime()
         running = true
         audioThread = Thread(::audioLoop, "voicelock-audio").apply { isDaemon = true; start() }
         SpikeLog.battery(this)
         main.postDelayed(batterySampler, BATTERY_INTERVAL_MS)
-    }
-
-    private fun buildPorcupineOrNull(): Porcupine? {
-        val key = BuildConfig.PICOVOICE_ACCESS_KEY
-        if (key.isBlank()) {
-            SpikeLog.service(this, "start", "no PICOVOICE_ACCESS_KEY: mic loop + clap detector only (M0 needs the key)")
-            return null
-        }
-        return try {
-            val builder = Porcupine.Builder().setAccessKey(key)
-            val custom = customKeywordPath()
-            if (custom != null) {
-                builder.setKeywordPaths(arrayOf(custom))
-                SpikeLog.service(this, "start", "custom keyword: $custom")
-            } else {
-                builder.setKeywords(arrayOf(Porcupine.BuiltInKeyword.PORCUPINE))
-                SpikeLog.service(this, "start", "built-in keyword: PORCUPINE (M0a); drop assets/keywords/custom.ppn for M0b")
-            }
-            builder.build(this).also {
-                // The loop hardcodes Porcupine's fixed frame geometry so it can run
-                // without the engine; make a mismatch loud rather than silent.
-                check(it.frameLength == FRAME_LENGTH && it.sampleRate == SAMPLE_RATE) {
-                    "Porcupine wants ${it.frameLength}@${it.sampleRate}, loop uses $FRAME_LENGTH@$SAMPLE_RATE"
-                }
-            }
-        } catch (e: PorcupineException) {
-            SpikeLog.service(this, "error", "porcupine init: ${e.message}")
-            Log.e(TAG, "porcupine init failed; continuing without it", e)
-            null
-        }
     }
 
     /**
@@ -169,8 +130,14 @@ class ListenService : Service() {
                 val n = record.read(frame, 0, FRAME_LENGTH)
                 if (n != FRAME_LENGTH) continue
 
-                porcupine?.let { p ->
-                    val idx = try { p.process(frame) } catch (e: PorcupineException) { Log.w(TAG, "process", e); -1 }
+                // While find-phone is ringing, the mic hears our own alarm at max
+                // volume and would re-trigger both detectors (a feedback loop).
+                // Stopping is driven by touch / "Found it" / timeout, none of
+                // which come from here, so gate both consumers until it stops.
+                if (dispatcher.isFindPhoneActive) continue
+
+                engine?.let { e ->
+                    val idx = e.accept(frame)
                     if (idx >= 0) {
                         SpikeLog.detect(this, idx)
                         TriggerBus.fire(Trigger.KeywordDetected(idx))
@@ -187,33 +154,13 @@ class ListenService : Service() {
         }
     }
 
-    /**
-     * A custom .ppn shipped in assets is copied to internal storage once, since
-     * Porcupine wants a real file path. Returns null when there is no custom
-     * keyword yet (M0a).
-     */
-    private fun customKeywordPath(): String? {
-        val out = File(filesDir, "custom.ppn")
-        if (out.exists()) return out.absolutePath
-        return try {
-            assets.open("keywords/custom.ppn").use { input -> out.outputStream().use { input.copyTo(it) } }
-            out.absolutePath
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     override fun onDestroy() {
         main.removeCallbacks(batterySampler)
         running = false
         audioThread?.join(500)
         audioThread = null
-        try {
-            porcupine?.delete()
-        } catch (e: PorcupineException) {
-            Log.w(TAG, "porcupine teardown", e)
-        }
-        porcupine = null
+        engine?.close()
+        engine = null
         SpikeLog.service(this, "stop")
         SpikeLog.serviceStartedAt = 0L
         dispatcher.stop()
@@ -221,7 +168,6 @@ class ListenService : Service() {
     }
 
     companion object {
-        private const val TAG = "ListenService"
         private const val CHANNEL = "listening"
         private const val NOTIF_ID = 1
         const val ACTION_STOP = "com.houseoftech.voicelock.STOP"

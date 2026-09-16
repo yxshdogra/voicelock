@@ -19,6 +19,14 @@ class ActionDispatcher(private val ctx: Context) {
 
     private val listener: (Trigger) -> Unit = { t -> handle(t) }
 
+    /**
+     * Whether find-phone is ringing right now. Read from the audio thread so the
+     * mic loop can stop feeding the detectors while the alarm plays (otherwise
+     * the mic hears our own alarm and re-triggers). Backed by a @Volatile field,
+     * and true through the 60 s timeout self-stop as well as user stops.
+     */
+    val isFindPhoneActive: Boolean get() = findPhone.isActive
+
     fun start() {
         lock.start()
         TriggerBus.subscribe(listener)

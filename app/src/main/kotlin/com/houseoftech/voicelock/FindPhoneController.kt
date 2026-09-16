@@ -36,7 +36,9 @@ import android.util.Log
 class FindPhoneController(private val ctx: Context) {
 
     private val main = Handler(Looper.getMainLooper())
-    private var player: MediaPlayer? = null
+    // @Volatile: isActive is read from the audio thread (ListenService's mic
+    // loop) to gate the detectors while the alarm rings; writes are on main.
+    @Volatile private var player: MediaPlayer? = null
     private var previousAlarmVolume = -1
     private var torchId: String? = null
     private var torchOn = false

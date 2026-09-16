@@ -84,15 +84,21 @@ Then in the app, in order:
 
 ### M4 findings from the device run
 
-- **Single clap can false-trigger a double-clap (reproduced twice).** One
-  physical clap crosses the 12 dB threshold twice inside the 300–800 ms window
-  (acoustic tail / room reverb); the second spike sits right at ~12.4 dB. Fix in
-  tuning: raise `spikeThresholdDb`, narrow `doubleClapMaxMs`, require the pair to
-  match in energy, or add a post-pair quiet gate.
-- **The find-phone alarm self-triggers the clap detector.** While ringing, the
-  mic hears its own alarm and emits more `double_clap` rows (no human input);
-  they are harmless today because `start()` early-returns while already active,
-  but the mic should be gated while `FindPhone.isActive`.
+- **Single clap can false-trigger a double-clap (reproduced twice). STILL OPEN —
+  needs on-device tuning data.** One physical clap crosses the 12 dB threshold
+  twice inside the 300–800 ms window (acoustic tail / room reverb); the second
+  spike sits right at ~12.4 dB. This is not fixable blind: the reverb slap-back
+  is acoustically a genuine soft double-clap to the current features, and every
+  cheap guard (raise `spikeThresholdDb`, narrow `doubleClapMaxMs`, require a
+  quiet gap) also rejects some *real* fast/loud double-claps. The right fix
+  (energy/spectral matching of the pair) needs measured inter-clap profiles from
+  the device tuning session, alongside the M0 accuracy run.
+- **The find-phone alarm self-triggers the clap detector. FIXED.** While ringing,
+  the mic heard its own alarm and emitted extra `double_clap` rows. The mic loop
+  now skips both detectors while `dispatcher.isFindPhoneActive`
+  (`ListenService.audioLoop`), so nothing self-triggers during playback; the flag
+  is `@Volatile` and stays true through the 60 s timeout self-stop, not just user
+  stops.
 
 Also owed at M4: overlay + Device Admin under Android's Restricted Settings gate
 for sideloaded APKs, and OEM battery killers (Xiaomi/Vivo/Oppo). Platform note:
