@@ -15,6 +15,7 @@ class ActionDispatcher(private val ctx: Context) {
 
     private val overlay = OverlayController(ctx)
     private val lock = LockController(ctx, overlay)
+    private val findPhone = FindPhoneController(ctx)
 
     private val listener: (Trigger) -> Unit = { t -> handle(t) }
 
@@ -25,6 +26,7 @@ class ActionDispatcher(private val ctx: Context) {
 
     fun stop() {
         TriggerBus.unsubscribe(listener)
+        findPhone.stop("service stopped")
         lock.stop()
     }
 
@@ -33,13 +35,14 @@ class ActionDispatcher(private val ctx: Context) {
         when (t) {
             // Until Milestone 0 assigns phrases to actions, any keyword locks.
             is Trigger.KeywordDetected -> { SpikeLog.trigger(ctx, "keyword", "index=${t.index}"); lock.lockAndArm() }
-            // A double clap is the find-phone gesture (M3); for now it also
-            // exercises the lock path so M2 is testable by clapping.
-            Trigger.DoubleClap -> { SpikeLog.trigger(ctx, "double_clap"); lock.lockAndArm() }
+            // A double clap is the find-phone gesture: the product promise is
+            // "clap and it rings, even on silent".
+            Trigger.DoubleClap -> { SpikeLog.trigger(ctx, "double_clap"); findPhone.start() }
             Trigger.DebugLock -> { SpikeLog.trigger(ctx, "debug_lock"); lock.lockAndArm() }
             Trigger.DismissOverlay -> { SpikeLog.trigger(ctx, "dismiss_overlay"); lock.dismiss() }
-            Trigger.DebugFindPhone -> SpikeLog.trigger(ctx, "debug_find_phone")
-            Trigger.StopFindPhone -> SpikeLog.trigger(ctx, "stop_find_phone")
+            Trigger.DebugFindPhone -> { SpikeLog.trigger(ctx, "debug_find_phone"); findPhone.start() }
+            // Any touch on the overlay, its "Found it" button, or the debug button.
+            Trigger.StopFindPhone -> { SpikeLog.trigger(ctx, "stop_find_phone"); findPhone.stop() }
         }
     }
 
