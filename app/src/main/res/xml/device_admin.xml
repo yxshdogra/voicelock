@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- force-lock ONLY. Nothing else is declared on purpose: every extra policy
+     (wipe, password rules, disable-camera) is another thing Play's Device
+     Admin scrutiny has to be convinced about, and none of them is needed to
+     turn the screen off. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>

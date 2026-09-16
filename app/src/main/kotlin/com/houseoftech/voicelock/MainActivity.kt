@@ -33,6 +33,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -64,6 +71,22 @@ private fun SpikeScreen() {
     var notifOk by remember {
         mutableStateOf(Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS))
     }
+    // Overlay + Device Admin are granted in Settings, not a dialog, so re-check on
+    // every resume rather than waiting for a result callback.
+    var overlayOk by remember { mutableStateOf(Settings.canDrawOverlays(ctx)) }
+    var adminOk by remember { mutableStateOf(LockDeviceAdminReceiver.isActive(ctx)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) {
+                overlayOk = Settings.canDrawOverlays(ctx)
+                adminOk = LockDeviceAdminReceiver.isActive(ctx)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         micOk = r[Manifest.permission.RECORD_AUDIO] == true || micOk
         notifOk = Build.VERSION.SDK_INT < 33 || r[Manifest.permission.POST_NOTIFICATIONS] == true || notifOk
@@ -110,6 +133,20 @@ private fun SpikeScreen() {
                 if (Build.VERSION.SDK_INT >= 33) wanted += Manifest.permission.POST_NOTIFICATIONS
                 ask.launch(wanted.toTypedArray())
             }) { Text("Grant microphone + notifications") }
+        }
+
+        Text("Milestone 2 grants (each opens Settings)", style = MaterialTheme.typography.titleMedium)
+        Text("Overlay: ${if (overlayOk) "granted" else "NOT granted"} · Device Admin: ${if (adminOk) "active" else "inactive"}")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = !overlayOk, onClick = {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }) { Text("Allow overlay") }
+            OutlinedButton(enabled = !adminOk, onClick = {
+                ctx.startActivity(LockDeviceAdminReceiver.requestIntent(ctx).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }) { Text("Enable Device Admin") }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

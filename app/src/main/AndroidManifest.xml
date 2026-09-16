@@ -11,6 +11,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- The lock screen is a window drawn over other apps; "display over other
+         apps" is granted from Settings, not a runtime dialog. VIBRATE is a
+         normal permission for find-phone. No CAMERA (setTorchMode does not need
+         it) and no ACCESS_NOTIFICATION_POLICY (alarms are DND-exempt by default). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:label="@string/app_name"
         android:icon="@android:drawable/ic_btn_speak_now"
@@ -29,6 +36,20 @@
         <!-- foregroundServiceType="microphone" is mandatory on Android 14+ for a
              service that records audio; Play also requires a matching Console
              declaration (plan, Milestone 8). -->
+        <!-- Device Admin: force-lock only, so DevicePolicyManager.lockNow() is
+             legal for us. See res/xml/device_admin.xml. -->
+        <receiver
+            android:name=".LockDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".ListenService"
             android:exported="false"

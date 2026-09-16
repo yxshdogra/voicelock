@@ -13,18 +13,31 @@ import android.util.Log
  */
 class ActionDispatcher(private val ctx: Context) {
 
+    private val overlay = OverlayController(ctx)
+    private val lock = LockController(ctx, overlay)
+
     private val listener: (Trigger) -> Unit = { t -> handle(t) }
 
-    fun start() = TriggerBus.subscribe(listener)
-    fun stop() = TriggerBus.unsubscribe(listener)
+    fun start() {
+        lock.start()
+        TriggerBus.subscribe(listener)
+    }
+
+    fun stop() {
+        TriggerBus.unsubscribe(listener)
+        lock.stop()
+    }
 
     private fun handle(t: Trigger) {
         Log.i(TAG, "trigger: $t")
         when (t) {
-            is Trigger.KeywordDetected -> SpikeLog.trigger(ctx, "keyword", "index=${t.index}")
-            Trigger.DoubleClap -> SpikeLog.trigger(ctx, "double_clap")
-            Trigger.DebugLock -> SpikeLog.trigger(ctx, "debug_lock")
-            Trigger.DismissOverlay -> SpikeLog.trigger(ctx, "dismiss_overlay")
+            // Until Milestone 0 assigns phrases to actions, any keyword locks.
+            is Trigger.KeywordDetected -> { SpikeLog.trigger(ctx, "keyword", "index=${t.index}"); lock.lockAndArm() }
+            // A double clap is the find-phone gesture (M3); for now it also
+            // exercises the lock path so M2 is testable by clapping.
+            Trigger.DoubleClap -> { SpikeLog.trigger(ctx, "double_clap"); lock.lockAndArm() }
+            Trigger.DebugLock -> { SpikeLog.trigger(ctx, "debug_lock"); lock.lockAndArm() }
+            Trigger.DismissOverlay -> { SpikeLog.trigger(ctx, "dismiss_overlay"); lock.dismiss() }
             Trigger.DebugFindPhone -> SpikeLog.trigger(ctx, "debug_find_phone")
             Trigger.StopFindPhone -> SpikeLog.trigger(ctx, "stop_find_phone")
         }
