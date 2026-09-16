@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *   {"t":...,"up":...,"kind":"false_positive"}         -- user-marked, refers to the last detect
  *   {"t":...,"up":...,"kind":"battery","pct":<0-100>,"charging":<bool>}
  *   {"t":...,"up":...,"kind":"service","event":"start"|"stop"|"error","msg":...}
+ *   {"t":...,"up":...,"kind":"trigger","name":<trigger>,"msg":...}   -- a Trigger reached the dispatcher
  */
 object SpikeLog {
     private const val FILE = "spike-log.jsonl"
@@ -59,6 +60,13 @@ object SpikeLog {
         val charging = bm.isCharging
         lastBatteryPct = pct
         append(ctx, JSONObject().put("kind", "battery").put("pct", pct).put("charging", charging))
+    }
+
+    /** A Trigger reached the dispatcher. Which mechanic ran (if any) is logged separately. */
+    fun trigger(ctx: Context, name: String, msg: String? = null) {
+        val row = JSONObject().put("kind", "trigger").put("name", name)
+        if (msg != null) row.put("msg", msg)
+        append(ctx, row)
     }
 
     fun service(ctx: Context, event: String, msg: String? = null) {

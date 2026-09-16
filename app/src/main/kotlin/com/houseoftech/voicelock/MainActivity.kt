@@ -131,6 +131,21 @@ private fun SpikeScreen() {
             Text("That one was a FALSE positive")
         }
 
+        Text("Debug triggers — exercise each mechanic without audio", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "These fire the same Trigger the recogniser or clap detector would. The service must be running for anything to happen.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = running, onClick = { TriggerBus.fire(Trigger.DebugLock) }) { Text("Lock") }
+            OutlinedButton(enabled = running, onClick = { TriggerBus.fire(Trigger.DismissOverlay) }) { Text("Unlock") }
+            OutlinedButton(enabled = running, onClick = { TriggerBus.fire(Trigger.DoubleClap) }) { Text("Clap×2") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = running, onClick = { TriggerBus.fire(Trigger.DebugFindPhone) }) { Text("Find phone") }
+            OutlinedButton(enabled = running, onClick = { TriggerBus.fire(Trigger.StopFindPhone) }) { Text("Stop find") }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
             OutlinedButton(onClick = { SpikeLog.clear(ctx) }) { Text("Clear log") }

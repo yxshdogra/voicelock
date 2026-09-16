@@ -35,11 +35,17 @@ class ListenService : Service() {
 
     private var porcupine: PorcupineManager? = null
     private val main = Handler(Looper.getMainLooper())
+    private lateinit var dispatcher: ActionDispatcher
     private val batterySampler = object : Runnable {
         override fun run() {
             SpikeLog.battery(this@ListenService)
             main.postDelayed(this, BATTERY_INTERVAL_MS)
         }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        dispatcher = ActionDispatcher(applicationContext).also { it.start() }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -99,9 +105,10 @@ class ListenService : Service() {
             }
             SpikeLog.serviceStartedAt = SystemClock.elapsedRealtime()
             porcupine = builder.build(this) { keywordIndex ->
-                // Runs on Porcupine's audio thread. Log and return; keep it cheap.
+                // Runs on Porcupine's audio thread. Log, hand off, return; keep it cheap.
                 SpikeLog.detect(this, keywordIndex)
                 Log.i(TAG, "detected keyword index=$keywordIndex")
+                TriggerBus.fire(Trigger.KeywordDetected(keywordIndex))
             }
             porcupine?.start()
             SpikeLog.battery(this)
@@ -140,6 +147,7 @@ class ListenService : Service() {
         porcupine = null
         SpikeLog.service(this, "stop")
         SpikeLog.serviceStartedAt = 0L
+        dispatcher.stop()
         super.onDestroy()
     }
 
