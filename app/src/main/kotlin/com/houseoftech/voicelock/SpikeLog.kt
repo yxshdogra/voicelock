@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *   {"t":...,"up":...,"kind":"battery","pct":<0-100>,"charging":<bool>}
  *   {"t":...,"up":...,"kind":"service","event":"start"|"stop"|"error","msg":...}
  *   {"t":...,"up":...,"kind":"trigger","name":<trigger>,"msg":...}   -- a Trigger reached the dispatcher
+ *   {"t":...,"up":...,"kind":"clap","db":<spike dB>,"rms":<spike rms>}  -- a double clap completed
  */
 object SpikeLog {
     private const val FILE = "spike-log.jsonl"
@@ -60,6 +61,11 @@ object SpikeLog {
         val charging = bm.isCharging
         lastBatteryPct = pct
         append(ctx, JSONObject().put("kind", "battery").put("pct", pct).put("charging", charging))
+    }
+
+    /** A double clap completed. [db]/[rms] are the completing spike's, for threshold tuning. */
+    fun clap(ctx: Context, db: Double, rms: Double) {
+        append(ctx, JSONObject().put("kind", "clap").put("db", db).put("rms", rms))
     }
 
     /** A Trigger reached the dispatcher. Which mechanic ran (if any) is logged separately. */

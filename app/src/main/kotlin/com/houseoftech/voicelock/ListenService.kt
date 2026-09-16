@@ -2,7 +2,9 @@ package com.houseoftech.voicelock
 
 import ai.picovoice.porcupine.Porcupine
 import ai.picovoice.porcupine.PorcupineException
-import ai.picovoice.porcupine.PorcupineManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -20,9 +22,15 @@ import android.util.Log
 import java.io.File
 
 /**
- * The always-on listener. A foreground service of type "microphone" holding
- * one PorcupineManager, which owns the AudioRecord and runs keyword spotting
- * on its own thread. Detections and periodic battery samples go to SpikeLog.
+ * The always-on listener. A foreground service of type "microphone" that owns
+ * ONE AudioRecord on a dedicated thread and feeds every frame to two consumers
+ * that share the stream: Porcupine keyword spotting (when an AccessKey and
+ * model are present) and the clap detector (always). No second AudioRecord,
+ * no second thread. Detections and periodic battery samples go to SpikeLog.
+ *
+ * Porcupine is OPTIONAL here. Milestone 0 (its accuracy) is blocked on a real
+ * device and an AccessKey; the loop and the clap detector must work without it,
+ * so Milestones 1-3 can be built and verified in the meantime.
  *
  * Milestone 0 has two sub-steps and this service supports both:
  *  - M0a: a BUILT-IN keyword (PORCUPINE) proves the pipeline end to end with
@@ -33,7 +41,10 @@ import java.io.File
  */
 class ListenService : Service() {
 
-    private var porcupine: PorcupineManager? = null
+    private var porcupine: Porcupine? = null
+    private val clapDetector = ClapDetector(frameLength = FRAME_LENGTH, sampleRate = SAMPLE_RATE)
+    @Volatile private var running = false
+    private var audioThread: Thread? = null
     private val main = Handler(Looper.getMainLooper())
     private lateinit var dispatcher: ActionDispatcher
     private val batterySampler = object : Runnable {
@@ -56,7 +67,7 @@ class ListenService : Service() {
             return START_NOT_STICKY
         }
         startInForeground()
-        if (porcupine == null) startListening()
+        if (!running) startListening()
         return START_STICKY
     }
 
@@ -87,14 +98,24 @@ class ListenService : Service() {
     }
 
     private fun startListening() {
+        // The recogniser is best-effort: without an AccessKey the service still
+        // runs the mic loop and the clap detector, which is all M1-M3 need.
+        porcupine = buildPorcupineOrNull()
+        SpikeLog.serviceStartedAt = SystemClock.elapsedRealtime()
+        running = true
+        audioThread = Thread(::audioLoop, "voicelock-audio").apply { isDaemon = true; start() }
+        SpikeLog.battery(this)
+        main.postDelayed(batterySampler, BATTERY_INTERVAL_MS)
+    }
+
+    private fun buildPorcupineOrNull(): Porcupine? {
         val key = BuildConfig.PICOVOICE_ACCESS_KEY
         if (key.isBlank()) {
-            SpikeLog.service(this, "error", "PICOVOICE_ACCESS_KEY is empty -- add it to local.properties")
-            stopSelf()
-            return
+            SpikeLog.service(this, "start", "no PICOVOICE_ACCESS_KEY: mic loop + clap detector only (M0 needs the key)")
+            return null
         }
-        try {
-            val builder = PorcupineManager.Builder().setAccessKey(key)
+        return try {
+            val builder = Porcupine.Builder().setAccessKey(key)
             val custom = customKeywordPath()
             if (custom != null) {
                 builder.setKeywordPaths(arrayOf(custom))
@@ -103,20 +124,66 @@ class ListenService : Service() {
                 builder.setKeywords(arrayOf(Porcupine.BuiltInKeyword.PORCUPINE))
                 SpikeLog.service(this, "start", "built-in keyword: PORCUPINE (M0a); drop assets/keywords/custom.ppn for M0b")
             }
-            SpikeLog.serviceStartedAt = SystemClock.elapsedRealtime()
-            porcupine = builder.build(this) { keywordIndex ->
-                // Runs on Porcupine's audio thread. Log, hand off, return; keep it cheap.
-                SpikeLog.detect(this, keywordIndex)
-                Log.i(TAG, "detected keyword index=$keywordIndex")
-                TriggerBus.fire(Trigger.KeywordDetected(keywordIndex))
+            builder.build(this).also {
+                // The loop hardcodes Porcupine's fixed frame geometry so it can run
+                // without the engine; make a mismatch loud rather than silent.
+                check(it.frameLength == FRAME_LENGTH && it.sampleRate == SAMPLE_RATE) {
+                    "Porcupine wants ${it.frameLength}@${it.sampleRate}, loop uses $FRAME_LENGTH@$SAMPLE_RATE"
+                }
             }
-            porcupine?.start()
-            SpikeLog.battery(this)
-            main.postDelayed(batterySampler, BATTERY_INTERVAL_MS)
         } catch (e: PorcupineException) {
             SpikeLog.service(this, "error", "porcupine init: ${e.message}")
-            Log.e(TAG, "porcupine init failed", e)
-            stopSelf()
+            Log.e(TAG, "porcupine init failed; continuing without it", e)
+            null
+        }
+    }
+
+    /**
+     * The one audio thread. Owns the AudioRecord for its whole life so the
+     * service can never release it out from under a read in progress; stopping
+     * is a flag flip plus a short join.
+     */
+    private fun audioLoop() {
+        val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val record = try {
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                maxOf(minBuf, FRAME_LENGTH * 2 * 4),
+            )
+        } catch (e: SecurityException) {
+            SpikeLog.service(this, "error", "RECORD_AUDIO not granted: ${e.message}")
+            running = false
+            return
+        }
+        if (record.state != AudioRecord.STATE_INITIALIZED) {
+            SpikeLog.service(this, "error", "AudioRecord failed to initialise (state=${record.state})")
+            record.release()
+            running = false
+            return
+        }
+        val frame = ShortArray(FRAME_LENGTH)
+        record.startRecording()
+        try {
+            while (running) {
+                val n = record.read(frame, 0, FRAME_LENGTH)
+                if (n != FRAME_LENGTH) continue
+
+                porcupine?.let { p ->
+                    val idx = try { p.process(frame) } catch (e: PorcupineException) { Log.w(TAG, "process", e); -1 }
+                    if (idx >= 0) {
+                        SpikeLog.detect(this, idx)
+                        TriggerBus.fire(Trigger.KeywordDetected(idx))
+                    }
+                }
+                clapDetector.onFrame(frame)?.let {
+                    clapDetector.lastSpike?.let { sp -> SpikeLog.clap(this, sp.db, sp.rms) }
+                    TriggerBus.fire(it)
+                }
+            }
+        } finally {
+            try { record.stop() } catch (_: IllegalStateException) {}
+            record.release()
         }
     }
 
@@ -138,8 +205,10 @@ class ListenService : Service() {
 
     override fun onDestroy() {
         main.removeCallbacks(batterySampler)
+        running = false
+        audioThread?.join(500)
+        audioThread = null
         try {
-            porcupine?.stop()
             porcupine?.delete()
         } catch (e: PorcupineException) {
             Log.w(TAG, "porcupine teardown", e)
@@ -156,6 +225,9 @@ class ListenService : Service() {
         private const val CHANNEL = "listening"
         private const val NOTIF_ID = 1
         const val ACTION_STOP = "com.houseoftech.voicelock.STOP"
+        /** Porcupine's fixed geometry: 512 samples per frame at 16 kHz = 32 ms. */
+        const val FRAME_LENGTH = 512
+        const val SAMPLE_RATE = 16_000
         /** Five minutes: fine enough to see drain per hour, coarse enough not to be the drain. */
         private const val BATTERY_INTERVAL_MS = 5 * 60 * 1000L
 
