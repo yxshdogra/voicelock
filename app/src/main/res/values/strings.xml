@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VoiceLock spike</string>
+    <string name="notif_channel">Listening</string>
+    <string name="notif_title">Listening for your phrase</string>
+    <string name="notif_text">Say it any time. Tap to open the spike log.</string>
+</resources>

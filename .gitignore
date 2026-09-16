@@ -1,0 +1,17 @@
+# Gradle / build output
+.gradle/
+build/
+*/build/
+.kotlin/
+
+# Never commit: Picovoice AccessKey lives here (see README)
+local.properties
+
+# Custom trained keyword models are per-account artifacts; keep them out of git
+# until we decide to ship a curated set.
+app/src/main/assets/keywords/*.ppn
+
+# IDE
+.idea/
+*.iml
+.DS_Store
