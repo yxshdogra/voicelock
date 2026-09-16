@@ -137,12 +137,6 @@ class ListenService : Service() {
                 val n = record.read(frame, 0, FRAME_LENGTH)
                 if (n != FRAME_LENGTH) continue
 
-                // While find-phone is ringing, the mic hears our own alarm at max
-                // volume and would re-trigger both detectors (a feedback loop).
-                // Stopping is driven by touch / "Found it" / timeout, none of
-                // which come from here, so gate both consumers until it stops.
-                if (dispatcher.isFindPhoneActive) continue
-
                 engine?.let { e ->
                     val idx = e.accept(frame)
                     if (idx >= 0) {
@@ -151,6 +145,13 @@ class ListenService : Service() {
                     }
                     e.drainHeard()?.let { SpikeLog.heard(this, it) }
                 }
+                // The CLAP detector alone is gated while find-phone rings: the mic
+                // hears our own alarm at max volume and would re-trigger it (the
+                // M4-2 feedback loop). The keyword engine must keep running --
+                // gating it too meant one stray clap killed voice unlock for up
+                // to 60 s, and silently swallowed an entire M0 trial.
+                if (dispatcher.isFindPhoneActive) continue
+
                 val clap = clapDetector.onFrame(frame)
                 // TEMPORARY (B2c): record the real onset envelope, accepted or not.
                 clapDetector.drainEnvelope()?.let { env ->

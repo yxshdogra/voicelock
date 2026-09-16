@@ -197,6 +197,23 @@ class ClapDetectorTest {
     }
 
     @Test
+    fun `a quiet speech onset is too soft to be a clap`() {
+        // Measured on device: this exact shape at rms 666 rang the alarm once the
+        // shape tests were in. Speech onsets sit at rms 136-929, claps at 3584+.
+        val det = ClapDetector()
+        runCurve(det, listOf(1.0, 0.68, 0.37), peak = 666)
+        assertNull("rms 666 is speech, not a clap", det.lastSpike)
+    }
+
+    @Test
+    fun `a loud clap of the same shape does register`() {
+        // Same envelope, real clap loudness: the shape is fine, energy decides.
+        val det = ClapDetector()
+        runCurve(det, listOf(1.0, 0.68, 0.37), peak = 5_000)
+        assertNotNull("rms 5000 with a clean decay is a clap", det.lastSpike)
+    }
+
+    @Test
     fun `a loud room raises the bar rather than firing`() {
         // Continuous rms 5000 is loud but steady: no transient, no trigger.
         val det = ClapDetector()

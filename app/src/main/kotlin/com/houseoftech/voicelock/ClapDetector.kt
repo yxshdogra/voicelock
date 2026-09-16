@@ -59,6 +59,17 @@ class ClapDetector(
      * This is the rule that separates them, read off real device envelopes.
      */
     private val riseTolerance: Double = 1.1,
+    /**
+     * Absolute energy floor for a clap, independent of the noise floor.
+     * Measured on device: speech onsets land at rms 136-929, real claps at
+     * 3584-7321. A quiet speech onset (rms 666) still paired into a false alarm
+     * once the shape tests were in, so raw loudness is the remaining separator.
+     *
+     * This is deliberately ABSOLUTE rather than more dB-over-floor: dB drifts
+     * with the room, which is why the same gesture measured 12-17 dB in one
+     * session and 34-36 dB in another. A clap is physically loud, full stop.
+     */
+    private val minSpikeRms: Double = 2_000.0,
 ) {
     /** What the detector saw on the frame that produced a spike; for tuning. */
     data class Spike(val atMs: Long, val db: Double, val rms: Double)
@@ -152,7 +163,10 @@ class ClapDetector(
         }
 
         val db = 20 * log10((rms + 1.0) / (noiseFloor + 1.0))
-        val isSpike = db > spikeThresholdDb
+        // Loud RELATIVE to the room and loud in ABSOLUTE terms. The first keeps a
+        // noisy room from firing constantly; the second keeps quiet speech from
+        // qualifying at all.
+        val isSpike = db > spikeThresholdDb && rms >= minSpikeRms
         val sharpAttack = prevRms <= rms * attackRatio
         prevRms = rms
 
