@@ -32,7 +32,9 @@ import android.os.SystemClock
  */
 class ListenService : Service() {
 
-    private var engine: KeywordEngine? = null
+    // Built on the audio thread, closed on main (onDestroy): @Volatile for the
+    // cross-thread handoff.
+    @Volatile private var engine: KeywordEngine? = null
     private val clapDetector = ClapDetector(frameLength = FRAME_LENGTH, sampleRate = SAMPLE_RATE)
     @Volatile private var running = false
     private var audioThread: Thread? = null
@@ -89,9 +91,9 @@ class ListenService : Service() {
     }
 
     private fun startListening() {
-        // The recogniser is best-effort: without an AccessKey the service still
-        // runs the mic loop and the clap detector, which is all M1-M3 need.
-        engine = PorcupineEngine.buildOrNull(this)
+        // The engine is best-effort and built on the audio thread (Vosk's model
+        // load is slow -- never on main); without it the service still runs the
+        // mic loop and the clap detector, which is all M1-M3 need.
         SpikeLog.serviceStartedAt = SystemClock.elapsedRealtime()
         running = true
         audioThread = Thread(::audioLoop, "voicelock-audio").apply { isDaemon = true; start() }
@@ -105,6 +107,11 @@ class ListenService : Service() {
      * is a flag flip plus a short join.
      */
     private fun audioLoop() {
+        // Prefer Vosk (Apache-2.0, Indian-English); Porcupine stays as a paid
+        // fallback until Vosk passes M0. Built here so the slow model load is off
+        // the main thread. Null = no model/key: mic loop + clap detector only.
+        engine = VoskEngine.buildOrNull(this) ?: PorcupineEngine.buildOrNull(this)
+
         val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val record = try {
             AudioRecord(
@@ -139,11 +146,17 @@ class ListenService : Service() {
                 engine?.let { e ->
                     val idx = e.accept(frame)
                     if (idx >= 0) {
-                        SpikeLog.detect(this, idx)
+                        SpikeLog.detect(this, idx, e.lastMatchText)
                         TriggerBus.fire(Trigger.KeywordDetected(idx))
                     }
+                    e.drainHeard()?.let { SpikeLog.heard(this, it) }
                 }
-                clapDetector.onFrame(frame)?.let {
+                val clap = clapDetector.onFrame(frame)
+                // TEMPORARY (B2c): record the real onset envelope, accepted or not.
+                clapDetector.drainEnvelope()?.let { env ->
+                    SpikeLog.envelope(this, env, clapDetector.lastEnvelopeConfirmed)
+                }
+                clap?.let {
                     clapDetector.lastSpike?.let { sp -> SpikeLog.clap(this, sp.db, sp.rms) }
                     TriggerBus.fire(it)
                 }

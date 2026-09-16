@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * at most one entry, and the file is the evidence even if the UI never opens.
  *
  * Rows:
- *   {"t":<epoch ms>,"up":<ms since service start>,"kind":"detect","kw":<index>}
+ *   {"t":<epoch ms>,"up":<ms since service start>,"kind":"detect","kw":<index>,"text":<what was heard>}
+ *   {"t":...,"up":...,"kind":"heard","text":<a finished utterance that did NOT match>}
  *   {"t":...,"up":...,"kind":"false_positive"}         -- user-marked, refers to the last detect
  *   {"t":...,"up":...,"kind":"battery","pct":<0-100>,"charging":<bool>}
  *   {"t":...,"up":...,"kind":"service","event":"start"|"stop"|"error","msg":...}
@@ -43,10 +44,26 @@ object SpikeLog {
         file(ctx).appendText(row.toString() + "\n")
     }
 
-    fun detect(ctx: Context, keywordIndex: Int) {
+    /**
+     * A keyword fired. [text] is what the engine actually recognised, when it can
+     * say (Vosk can; Porcupine cannot) -- without it a detect row cannot be told
+     * apart from a false positive after the fact, which is the whole M0 score.
+     */
+    fun detect(ctx: Context, keywordIndex: Int, text: String? = null) {
         detections.incrementAndGet()
         lastDetectionAt = System.currentTimeMillis()
-        append(ctx, JSONObject().put("kind", "detect").put("kw", keywordIndex))
+        val row = JSONObject().put("kind", "detect").put("kw", keywordIndex)
+        if (text != null) row.put("text", text)
+        append(ctx, row)
+    }
+
+    /**
+     * A finished utterance the engine recognised but which did NOT match the wake
+     * phrase. These are the near-misses: the denominator that shows whether the
+     * grammar is too loose (firing on other speech) or too tight (never firing).
+     */
+    fun heard(ctx: Context, text: String) {
+        append(ctx, JSONObject().put("kind", "heard").put("text", text))
     }
 
     /** The user pressed "that was a false positive" after a detection they did not cause. */
@@ -61,6 +78,18 @@ object SpikeLog {
         val charging = bm.isCharging
         lastBatteryPct = pct
         append(ctx, JSONObject().put("kind", "battery").put("pct", pct).put("charging", charging))
+    }
+
+    /**
+     * TEMPORARY (B2c): the RMS envelope after a loud sharp onset, and whether the
+     * detector accepted it as a transient. Claps and speech are separated by how
+     * fast the energy collapses; these rows are the measurement that sets the
+     * decay window instead of guessing it. Remove once tuned.
+     */
+    fun envelope(ctx: Context, rms: List<Double>, confirmed: Boolean) {
+        val arr = org.json.JSONArray()
+        rms.forEach { arr.put(Math.round(it).toInt()) }
+        append(ctx, JSONObject().put("kind", "envelope").put("rms", arr).put("ok", confirmed))
     }
 
     /** A double clap completed. [db]/[rms] are the completing spike's, for threshold tuning. */

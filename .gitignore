@@ -7,8 +7,10 @@ build/
 # Never commit: Picovoice AccessKey lives here (see README)
 local.properties
 
-# Custom trained keyword models are per-account artifacts; keep them out of git
-# until we decide to ship a curated set.
+# Wake models are large binary artifacts, downloaded not committed.
+# Vosk en-IN model (~36MB): see README for the download step.
+app/src/main/assets/model-en-in/
+# (legacy) Porcupine custom keyword, per-account artifact.
 app/src/main/assets/keywords/*.ppn
 
 # IDE

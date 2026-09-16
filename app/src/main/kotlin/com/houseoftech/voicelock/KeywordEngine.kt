@@ -20,4 +20,17 @@ interface KeywordEngine {
 
     /** Release native resources. Safe to call once, at teardown. */
     fun close()
+
+    /**
+     * What the engine recognised behind the most recent match, for the M0 log.
+     * Null when the engine cannot report text (Porcupine returns an index only).
+     */
+    val lastMatchText: String? get() = null
+
+    /**
+     * A finished utterance the engine recognised that did NOT match, if one is
+     * pending; drains it. These near-misses show whether the grammar is too
+     * loose or too tight. Engines without text always return null.
+     */
+    fun drainHeard(): String? = null
 }

@@ -50,8 +50,14 @@ android {
 }
 
 dependencies {
-    // Keyword spotting. Offline inference; custom phrases trained on
-    // console.picovoice.ai and shipped as .ppn files.
+    // Wake engine: Vosk (Apache-2.0), run as a restricted-grammar phrase
+    // spotter with the Apache-2.0 vosk-model-small-en-in-0.4 (Indian-English).
+    // The AAR bundles the native libs; jna is its runtime dependency.
+    implementation("com.alphacephei:vosk-android:0.3.47")
+    implementation("net.java.dev.jna:jna:5.17.0@aar")
+
+    // Dormant fallback behind the KeywordEngine seam until Vosk passes M0, then
+    // removed. Offline inference; custom phrases trained on console.picovoice.ai.
     implementation("ai.picovoice:porcupine-android:4.0.2")
 
     implementation("androidx.core:core-ktx:1.15.0")
