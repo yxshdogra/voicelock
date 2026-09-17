@@ -86,10 +86,12 @@ class ClapDetector(
     private var pending: Spike? = null
 
     /**
-     * TEMPORARY tuning instrument (B2c). After a sharp loud onset, the next
-     * frames' RMS are collected so the REAL decay envelope of a clap can be
-     * compared against speech. Guessing these thresholds failed twice; this
-     * measures them. Remove once the decay window is set from data.
+     * Tuning instrument. After a sharp loud onset the next frames' RMS are
+     * collected, so the REAL decay envelope of a clap can be compared against
+     * speech in the log. Guessing these thresholds failed twice before this
+     * existed; it stays because re-tuning for a new device or room needs the
+     * same measurement. Volume is low -- the RMS floor rejects most onsets
+     * before they ever become candidates.
      */
     private var envelope: MutableList<Double>? = null
     private var pendingFramesLeft = 0

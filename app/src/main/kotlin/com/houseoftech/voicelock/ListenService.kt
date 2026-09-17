@@ -25,10 +25,9 @@ import android.os.SystemClock
  * and periodic battery samples go to SpikeLog.
  *
  * The engine is OPTIONAL and lives behind [KeywordEngine], so which one runs
- * (Porcupine today, openWakeWord next) is a one-line factory swap in
- * [startListening] and nothing downstream changes. Milestone 0 (engine accuracy)
- * is proven on a real device; the loop and the clap detector work without any
- * engine, so Milestones 1-3 are built and verified in the meantime.
+ * (Vosk today, Porcupine as a paid fallback) is a one-line factory swap in
+ * [audioLoop] and nothing downstream changes. Without any engine the loop and
+ * the clap detector still work, which is all Milestones 1-3 need.
  */
 class ListenService : Service() {
 
@@ -153,7 +152,8 @@ class ListenService : Service() {
                 if (dispatcher.isFindPhoneActive) continue
 
                 val clap = clapDetector.onFrame(frame)
-                // TEMPORARY (B2c): record the real onset envelope, accepted or not.
+                // Record the real onset envelope, accepted or not: the clap
+                // tuning instrument (see ClapDetector).
                 clapDetector.drainEnvelope()?.let { env ->
                     SpikeLog.envelope(this, env, clapDetector.lastEnvelopeConfirmed)
                 }

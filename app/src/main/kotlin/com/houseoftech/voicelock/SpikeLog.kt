@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *   {"t":...,"up":...,"kind":"service","event":"start"|"stop"|"error","msg":...}
  *   {"t":...,"up":...,"kind":"trigger","name":<trigger>,"msg":...}   -- a Trigger reached the dispatcher
  *   {"t":...,"up":...,"kind":"clap","db":<spike dB>,"rms":<spike rms>}  -- a double clap completed
+ *   {"t":...,"up":...,"kind":"envelope","rms":[...],"ok":<bool>}  -- onset energy curve, for clap tuning
  */
 object SpikeLog {
     private const val FILE = "spike-log.jsonl"
@@ -81,10 +82,11 @@ object SpikeLog {
     }
 
     /**
-     * TEMPORARY (B2c): the RMS envelope after a loud sharp onset, and whether the
-     * detector accepted it as a transient. Claps and speech are separated by how
-     * fast the energy collapses; these rows are the measurement that sets the
-     * decay window instead of guessing it. Remove once tuned.
+     * The RMS envelope after a loud sharp onset, and whether the detector
+     * accepted it as a transient. Claps and speech are separated by the SHAPE of
+     * the energy curve (a clap peaks at its onset and collapses; speech keeps
+     * pumping energy in), so these rows are what set the rule instead of
+     * guesswork -- and what any future re-tune will need.
      */
     fun envelope(ctx: Context, rms: List<Double>, confirmed: Boolean) {
         val arr = org.json.JSONArray()
