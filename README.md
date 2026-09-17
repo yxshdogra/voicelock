@@ -58,22 +58,37 @@ must exist in the model vocabulary. No training, no console, no key.
 
 ## Scoring
 
-The instrument is `spike-log.jsonl` in the app's files dir; the UI only mirrors
-it. Pull it off the device:
+The instrument is `spike-log.jsonl` in the app's files dir; the UI only
+mirrors it. Rows are `attempt` (you pressed "About to say it", before
+speaking — the denominator for true-positive rate), `detect` (with the
+recognised `text`), `heard` (an utterance Vosk recognised that did NOT
+match — the near-miss denominator), `false_positive` (you pressed the
+button), `clap`, `envelope` (onset energy curves, for clap tuning),
+`battery` (every 5 min, with `charging`), and `service` start/stop/error.
 
-```
-adb shell run-as com.houseoftech.voicelock cat files/spike-log.jsonl > spike-log.jsonl
-```
+Protocol:
 
-Rows are `detect` (with the recognised `text`), `heard` (an utterance Vosk
-recognised that did NOT match — the near-miss denominator), `false_positive`
-(you pressed the button), `clap`, `envelope` (onset energy curves, for clap
-tuning), `battery` (every 5 min, with `charging`), and `service`
-start/stop/error. Compute:
+1. Start listening.
+2. For each of ~20 utterances: tap **About to say it**, then say the phrase.
+3. Tap **That one was a FALSE positive** whenever it fires unprompted.
+4. Leave the phone unplugged for at least 2 hours with the service running.
+5. Pull the log:
+   ```
+   adb shell run-as com.houseoftech.voicelock cat files/spike-log.jsonl > spike-log.jsonl
+   ```
+   or `scripts/pull-log.sh [output-path]`.
+6. Score it:
+   ```
+   python3 scripts/score.py spike-log.jsonl
+   ```
 
-- true-positive rate = detections you caused / phrases you said
-- false positives per hour = `false_positive` rows / hours the service ran
-- battery per hour = drop in `pct` between samples while `charging=false`
+`score.py` pairs each `attempt` with the next `detect` within a window
+(default 6 s) to compute true-positive rate, counts unpaired `detect` rows as
+false positives, sums `service` start/stop sessions for uptime, and sums
+`battery` drops between consecutive samples with `charging=false`. It prints
+a report against the bar (**>=90% true-positive, <1 false-positive/hour,
+<5% battery/hour**) and exits `0` on overall PASS, `1` on FAIL, `2` if any
+metric can't be computed (insufficient data).
 
 ## Milestones 1-3 — built and device-checked (2026-09-16, Samsung S21 FE)
 

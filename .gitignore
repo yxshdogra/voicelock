@@ -17,3 +17,4 @@ app/src/main/assets/keywords/*.ppn
 .idea/
 *.iml
 .DS_Store
+__pycache__/

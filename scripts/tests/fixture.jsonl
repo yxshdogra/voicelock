@@ -1,0 +1,28 @@
+{"t": 1700000000000, "up": 0, "kind": "service", "event": "start"}
+{"t": 1700000000000, "up": 0, "kind": "battery", "pct": 100, "charging": false}
+{"t": 1700000060000, "up": 60000, "kind": "attempt"}
+{"t": 1700000062000, "up": 62000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700000360000, "up": 360000, "kind": "attempt"}
+{"t": 1700000362000, "up": 362000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700000660000, "up": 660000, "kind": "attempt"}
+{"t": 1700000662000, "up": 662000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700000960000, "up": 960000, "kind": "attempt"}
+{"t": 1700000962000, "up": 962000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700001260000, "up": 1260000, "kind": "attempt"}
+{"t": 1700001560000, "up": 1560000, "kind": "attempt"}
+{"t": 1700001562000, "up": 1562000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700001860000, "up": 1860000, "kind": "attempt"}
+{"t": 1700001862000, "up": 1862000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700002160000, "up": 2160000, "kind": "attempt"}
+{"t": 1700002162000, "up": 2162000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700002460000, "up": 2460000, "kind": "attempt"}
+{"t": 1700002462000, "up": 2462000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700002760000, "up": 2760000, "kind": "attempt"}
+{"t": 1700002762000, "up": 2762000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700003600000, "up": 3600000, "kind": "battery", "pct": 97, "charging": false}
+{"t": 1700005000000, "up": 5000000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700005200000, "up": 5200000, "kind": "detect", "kw": 0, "text": "unlock my phone"}
+{"t": 1700005201000, "up": 5201000, "kind": "false_positive"}
+{"t": 1700007200000, "up": 7200000, "kind": "battery", "pct": 96, "charging": true}
+{"t": 1700010800000, "up": 10800000, "kind": "battery", "pct": 96, "charging": true}
+{"t": 1700010800000, "up": 10800000, "kind": "service", "event": "stop"}

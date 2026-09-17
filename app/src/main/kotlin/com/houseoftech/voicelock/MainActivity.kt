@@ -167,6 +167,9 @@ private fun SpikeScreen() {
         Button(enabled = detections > falsePositives, onClick = { SpikeLog.falsePositive(ctx) }) {
             Text("That one was a FALSE positive")
         }
+        Button(onClick = { SpikeLog.attempt(ctx) }) {
+            Text("About to say it")
+        }
 
         Text("Debug triggers — exercise each mechanic without audio", style = MaterialTheme.typography.titleMedium)
         Text(

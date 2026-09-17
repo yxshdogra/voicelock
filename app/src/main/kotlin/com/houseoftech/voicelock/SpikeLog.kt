@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * at most one entry, and the file is the evidence even if the UI never opens.
  *
  * Rows:
+ *   {"t":...,"up":...,"kind":"attempt"}  -- user pressed "about to say it", before speaking
  *   {"t":<epoch ms>,"up":<ms since service start>,"kind":"detect","kw":<index>,"text":<what was heard>}
  *   {"t":...,"up":...,"kind":"heard","text":<a finished utterance that did NOT match>}
  *   {"t":...,"up":...,"kind":"false_positive"}         -- user-marked, refers to the last detect
@@ -71,6 +72,11 @@ object SpikeLog {
     fun falsePositive(ctx: Context) {
         falsePositives.incrementAndGet()
         append(ctx, JSONObject().put("kind", "false_positive"))
+    }
+
+    /** The user is about to say the phrase. One tap per attempt, before speaking; the scorer pairs it with the next detect. */
+    fun attempt(ctx: Context) {
+        append(ctx, JSONObject().put("kind", "attempt"))
     }
 
     fun battery(ctx: Context) {
